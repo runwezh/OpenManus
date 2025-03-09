@@ -85,6 +85,43 @@ python main.py
 python run_flow.py
 ```
 
+## 使用方法
+
+在你的项目中使用 `LLM` 类，按照以下步骤操作：
+
+1. 导入必要的模块和类：
+
+```python
+from app.llm import LLM
+from app.schema import Message
+```
+
+2. 创建 `LLM` 类的实例：
+
+```python
+llm = LLM(config_name="default")
+```
+
+3. 格式化你的消息并发送提示到 LLM：
+
+```python
+messages = [
+    Message.system_message("你是一个乐于助人的助手"),
+    Message.user_message("你好，你怎么样？")
+]
+
+response = await llm.ask(messages)
+print(response)
+```
+
+4. 使用工具与 LLM 交互：
+
+```python
+tools = [{"type": "search", "query": "最新新闻"}]
+response = await llm.ask_tool(messages, tools=tools)
+print(response)
+```
+
 ## 贡献指南
 我们欢迎任何友好的建议和有价值的贡献！可以直接创建 issue 或提交 pull request。
 

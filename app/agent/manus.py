@@ -7,6 +7,7 @@ from app.tool.browser_use_tool import BrowserUseTool
 from app.tool.file_saver import FileSaver
 from app.tool.google_search import GoogleSearch
 from app.tool.python_execute import PythonExecute
+from app.config import config
 
 
 class Manus(ToolCallAgent):
@@ -32,3 +33,8 @@ class Manus(ToolCallAgent):
             PythonExecute(), GoogleSearch(), BrowserUseTool(), FileSaver(), Terminate()
         )
     )
+
+    def __init__(self, **kwargs):
+        # 从配置中获取 max_steps
+        max_steps = config.agent.max_steps if hasattr(config, 'agent') and hasattr(config.agent, 'max_steps') else 3
+        super().__init__(max_steps=max_steps, **kwargs)

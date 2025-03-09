@@ -2,6 +2,8 @@ import threading
 import tomllib
 from pathlib import Path
 from typing import Dict
+import os
+from dotenv import load_dotenv  # 需要安装: pip install python-dotenv
 
 from pydantic import BaseModel, Field
 
@@ -64,16 +66,25 @@ class Config:
             return tomllib.load(f)
 
     def _load_initial_config(self):
+        # 加载 .env 文件
+        dotenv_path = Path(PROJECT_ROOT) / ".env"
+        if dotenv_path.exists():
+            load_dotenv(dotenv_path)
+        
         raw_config = self._load_config()
         base_llm = raw_config.get("llm", {})
         llm_overrides = {
             k: v for k, v in raw_config.get("llm", {}).items() if isinstance(v, dict)
         }
 
+        # 添加这行来获取 provider
+        provider = base_llm.get("provider", "openai")
+
         default_settings = {
+            "provider": provider,  # 添加 provider 参数
             "model": base_llm.get("model"),
-            "base_url": base_llm.get("base_url"),
-            "api_key": base_llm.get("api_key"),
+            "base_url": base_llm.get("base_url", "http://default-url.com"),
+            "api_key": base_llm.get("api_key", "default-api-key"),
             "max_tokens": base_llm.get("max_tokens", 4096),
             "temperature": base_llm.get("temperature", 1.0),
         }
@@ -88,7 +99,22 @@ class Config:
             }
         }
 
+        # 从环境变量覆盖 API 密钥
+        if "DEEPSEEK_API_KEY" in os.environ and "deepseek" in llm_overrides:
+            llm_overrides["deepseek"]["api_key"] = os.environ["DEEPSEEK_API_KEY"]
+        
+        if "OPENAI_API_KEY" in os.environ and "openai" in llm_overrides:
+            llm_overrides["openai"]["api_key"] = os.environ["OPENAI_API_KEY"]
+
         self._config = AppConfig(**config_dict)
+
+        # Ensure the config file has valid values
+        if not self._config.llm["default"].base_url or not self._config.llm["default"].api_key:
+            raise ValueError("Invalid configuration: 'base_url' and 'api_key' must be set for 'llm.default'")
+        if "ollama" in self._config.llm and not self._config.llm["ollama"].api_key:
+            raise ValueError("Invalid configuration: 'api_key' must be set for 'llm.ollama'")
+        if "vision" in self._config.llm and (not self._config.llm["vision"].base_url or not self._config.llm["vision"].api_key):
+            raise ValueError("Invalid configuration: 'base_url' and 'api_key' must be set for 'llm.vision'")
 
     @property
     def llm(self) -> Dict[str, LLMSettings]:

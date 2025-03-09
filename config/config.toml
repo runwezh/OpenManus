@@ -1,0 +1,31 @@
+# Global LLM configuration (默认使用的 LLM 服务)
+[llm]
+provider = "deepseek"  # 可选: "ollama", "deepseek", "openai"
+model = "deepseek-chat"
+max_tokens = 4096
+temperature = 0.0
+
+# DeepSeek 配置
+[llm.deepseek]
+base_url = "https://api.deepseek.com"
+api_key = ""  # 将从 .env 文件加载
+default_model = "deepseek-chat"
+
+# OpenAI 配置
+[llm.openai]
+base_url = "https://api.openai.com/v1"
+api_key = ""  # 将从 .env 文件加载
+default_model = "gpt-3.5-turbo"
+
+# Ollama 配置
+[llm.ollama]
+base_url = "http://localhost:11434"
+default_model = "deepseek-r1:32b"
+
+# 可选的视觉 LLM 配置
+[llm.vision]
+provider = "deepseek"  # 可选: "deepseek", "openai" (Ollama 可能不支持视觉功能)
+model = "deepseek-chat"
+
+[agent]
+max_steps = 2  # 默认可能是 30

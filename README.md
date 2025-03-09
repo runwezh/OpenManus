@@ -69,6 +69,23 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-..."  # Replace with your actual API key
 ```
 
+# OpenManus 多平台 LLM 集成使用指南
+
+OpenManus 现支持多种 LLM 平台，包括：
+- 本地 Ollama
+- DeepSeek API
+- OpenAI API
+
+## 使用方法
+
+通过 `config/config.toml` 中的 `provider` 参数配置：
+
+```toml
+[llm]
+provider = "ollama"  # 可选: "ollama", "deepseek", "openai"
+model = "deepseek-r1:32b"
+```
+
 ## Quick Start
 One line for run OpenManus:
 
@@ -82,6 +99,43 @@ For unstable version, you also can run:
 
 ```bash
 python run_flow.py
+```
+
+## Usage
+
+To use the `LLM` class in your project, follow these steps:
+
+1. Import the necessary modules and classes:
+
+```python
+from app.llm import LLM
+from app.schema import Message
+```
+
+2. Create an instance of the `LLM` class:
+
+```python
+llm = LLM(config_name="default")
+```
+
+3. Format your messages and send a prompt to the LLM:
+
+```python
+messages = [
+    Message.system_message("You are a helpful assistant"),
+    Message.user_message("Hello, how are you?")
+]
+
+response = await llm.ask(messages)
+print(response)
+```
+
+4. Use tools with the LLM:
+
+```python
+tools = [{"type": "search", "query": "latest news"}]
+response = await llm.ask_tool(messages, tools=tools)
+print(response)
 ```
 
 ## How to contribute

@@ -12,6 +12,8 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 from app.config import LLMSettings, config
 from app.logger import logger  # Assuming a logger is set up in your app
 from app.schema import Message
+from .ollama_client import OllamaClient
+from .llm_client import create_llm_client
 
 
 class LLM:
@@ -26,18 +28,46 @@ class LLM:
             cls._instances[config_name] = instance
         return cls._instances[config_name]
 
-    def __init__(
-        self, config_name: str = "default", llm_config: Optional[LLMSettings] = None
-    ):
-        if not hasattr(self, "client"):  # Only initialize if not already initialized
-            llm_config = llm_config or config.llm
-            llm_config = llm_config.get(config_name, llm_config["default"])
-            self.model = llm_config.model
-            self.max_tokens = llm_config.max_tokens
-            self.temperature = llm_config.temperature
-            self.client = AsyncOpenAI(
-                api_key=llm_config.api_key, base_url=llm_config.base_url
-            )
+    def __init__(self, config_name=None, llm_config=None):
+        if llm_config is None:
+            llm_config = {}
+        
+        # 获取配置中的 provider
+        provider = config.llm["default"].provider if hasattr(config.llm["default"], "provider") else "deepseek"
+        
+        # 基本模型配置来自 default 或被传入的 llm_config 覆盖
+        self.model = llm_config.get("model") or config.llm["default"].model
+        self.max_tokens = llm_config.get("max_tokens") or config.llm["default"].max_tokens
+        self.temperature = llm_config.get("temperature") or config.llm["default"].temperature
+        
+        # 根据 provider 获取特定配置
+        if provider in config.llm:
+            provider_config = config.llm[provider]
+            # 使用特定提供商配置，如果有的话
+            self.base_url = provider_config.base_url
+            self.api_key = provider_config.api_key if provider != "ollama" else None
+        else:
+            # 回退到默认配置
+            self.base_url = config.llm["default"].base_url
+            self.api_key = config.llm["default"].api_key if provider != "ollama" else None
+            
+        # Ollama 特殊处理
+        if provider == "ollama" and not self.base_url:
+            self.base_url = "http://localhost:11434"
+        
+        # 导入并创建适当的 LLM 客户端
+        from .llm_client import create_llm_client
+        self.llm_client = create_llm_client(
+            provider=provider,
+            model=self.model,
+            config={
+                "base_url": self.base_url,
+                "api_key": self.api_key
+            }
+        )
+        
+        # 打印初始化信息以便调试
+        logger.info(f"LLM 初始化完成 - 提供者: {provider}, 模型: {self.model}, URL: {self.base_url}")
 
     @staticmethod
     def format_messages(messages: List[Union[dict, Message]]) -> List[dict]:
@@ -183,7 +213,7 @@ class LLM:
     ):
         """
         Ask LLM using functions/tools and return the response.
-
+        
         Args:
             messages: List of conversation messages
             system_msgs: Optional system messages to prepend
@@ -192,63 +222,49 @@ class LLM:
             tool_choice: Tool choice strategy
             temperature: Sampling temperature for the response
             **kwargs: Additional completion arguments
-
+            
         Returns:
             ChatCompletionMessage: The model's response
-
+            
         Raises:
             ValueError: If tools, tool_choice, or messages are invalid
-            OpenAIError: If API call fails after retries
-            Exception: For unexpected errors
+            Exception: For API errors or unexpected errors
         """
         try:
             # Validate tool_choice
             if tool_choice not in ["none", "auto", "required"]:
                 raise ValueError(f"Invalid tool_choice: {tool_choice}")
-
+                
             # Format messages
             if system_msgs:
                 system_msgs = self.format_messages(system_msgs)
                 messages = system_msgs + self.format_messages(messages)
             else:
                 messages = self.format_messages(messages)
-
+                
             # Validate tools if provided
             if tools:
                 for tool in tools:
                     if not isinstance(tool, dict) or "type" not in tool:
                         raise ValueError("Each tool must be a dict with 'type' field")
-
-            # Set up the completion request
-            response = await self.client.chat.completions.create(
-                model=self.model,
+                        
+            # 设置温度
+            temp = temperature if temperature is not None else self.temperature
+            
+            # 使用我们的 LLM 客户端
+            response = await self.llm_client.chat_completions(
                 messages=messages,
-                temperature=temperature or self.temperature,
-                max_tokens=self.max_tokens,
-                tools=tools,
-                tool_choice=tool_choice,
-                timeout=timeout,
-                **kwargs,
+                temperature=temp,
+                max_tokens=self.max_tokens
             )
-
-            # Check if response is valid
-            if not response.choices or not response.choices[0].message:
-                print(response)
-                raise ValueError("Invalid or empty response from LLM")
-
-            return response.choices[0].message
-
+            
+            # 处理响应
+            return response
+            
         except ValueError as ve:
-            logger.error(f"Validation error in ask_tool: {ve}")
+            logger.error(f"Value error in ask_tool: {str(ve)}")
             raise
-        except OpenAIError as oe:
-            if isinstance(oe, AuthenticationError):
-                logger.error("Authentication failed. Check API key.")
-            elif isinstance(oe, RateLimitError):
-                logger.error("Rate limit exceeded. Consider increasing retry attempts.")
-            elif isinstance(oe, APIError):
-                logger.error(f"API error: {oe}")
-            raise
+            
         except Exception as e:
-            logger.error(f"Unexpected error in ask_tool: {e}")
+            logger.error(f"Unexpected error in ask_tool: {str(e)}")
             raise
